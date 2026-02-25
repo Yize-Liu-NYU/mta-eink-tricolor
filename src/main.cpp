@@ -42,15 +42,14 @@ const unsigned long updateInterval = 60000; // 60 seconds
 void displaySimpleMessage(const char* message) {
   EPD.EPD_init_Full();
   EPD.clearbuffer();
+  // show uptime in seconds to help with debugging
+  unsigned long uptimeSeconds = millis() / 1000;
+  String uptimeStr = "Uptime: " + String(uptimeSeconds) + "s";
   EPD.fontscale = 2;
   EPD.SetFont(FONT12);
   EPD.DrawUTF(10, 10, message);
-  // show uptime in seconds to help with debugging
-  unsigned long uptimeSeconds = millis() / 1000;
-  char uptimeBuff[40];
-  snprintf(uptimeBuff, sizeof(uptimeBuff), "Uptime: %lu sec", uptimeSeconds);
   EPD.fontscale = 1;
-  EPD.DrawUTF(10, 60, uptimeBuff);
+  EPD.DrawUTF(10, 60, uptimeStr);
   EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
   EPD.EPD_Update();
   EPD.ReadBusy_long();
