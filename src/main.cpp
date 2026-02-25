@@ -38,7 +38,7 @@ EPaperDrive EPD(0, CS, RST, DC, BUSY, CLK, DIN);
 unsigned long lastUpdate = 0;
 const unsigned long updateInterval = 60000; // 60 seconds
 
-// Display a simple message and uptime on the e-ink screen (used for errors and status updates)
+// Display a simple message and uptime on the e-ink screen (used for errors and status updates), using full refresh
 void displaySimpleMessage(const char* message) {
   EPD.EPD_init_Full();
   EPD.clearbuffer();
@@ -55,6 +55,8 @@ void displaySimpleMessage(const char* message) {
   EPD.ReadBusy_long();
   EPD.deepsleep();
 }
+
+
 
 void updateDisplay() {
   if (WiFi.status() != WL_CONNECTED) {
