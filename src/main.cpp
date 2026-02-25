@@ -76,8 +76,14 @@ void updateDisplay() {
     if (httpCode > 0) {
       if (httpCode == HTTP_CODE_OK) {
         // Parse JSON directly from stream to save memory
-        DynamicJsonDocument doc(4096);
-        DeserializationError error = deserializeJson(doc, http.getStream());
+        // Use a filter to only parse the fields we need, avoiding NoMemory errors
+        StaticJsonDocument<200> filter;
+        filter["upcoming_trips"]["north"][0]["estimated_current_stop_arrival_time"] = true;
+        filter["upcoming_trips"]["north"][0]["current_stop_arrival_time"] = true;
+        filter["timestamp"] = true;
+
+        DynamicJsonDocument doc(2048);
+        DeserializationError error = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
 
         if (error) {
           Serial.print("deserializeJson() failed: ");
