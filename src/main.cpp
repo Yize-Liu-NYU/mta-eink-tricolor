@@ -86,19 +86,10 @@ void checkServiceStatus() {
   http.useHTTP10(true);
   http.setTimeout(10000);
   
+  // For the status check, we only care about the "direction_statuses" and "service_irregularity_summaries" fields, so we can use a filter to minimize memory usage.
   if (http.begin(*client, status_api_url)) {
     int httpCode = http.GET();
     if (httpCode == HTTP_CODE_OK) {
-      // Find the status manually in the stream to avoid parsing the huge JSON?
-      // Or try parsing again with filter. The fields are at the top.
-      // If deserializeJson attempts to read the WHOLE stream (which is huge), it might error out if the stream dies.
-      // Let's try to just read the stream into a string until we find "direction_statuses" or similar?
-      // No, that's brittle.
-      
-      // Let's try filter again but be aware it might fail if the stream is too long.
-      // A trick is to use a smaller document and HOPE the filter catches it early and we don't care about the rest?
-      // ArduinoJson normally reads until the end.
-      
       StaticJsonDocument<200> filter;
       filter["direction_statuses"]["north"] = true;
       filter["service_irregularity_summaries"]["north"] = true;
