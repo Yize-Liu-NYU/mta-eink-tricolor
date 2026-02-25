@@ -28,10 +28,6 @@ const char* api_url = "https://api.subwaynow.app/stops/N03";
 
 // --- Battery Configuration ---
 #define BATTERY_PIN A0
-// Adjust this multiplier based on your specific voltage divider.
-// For NodeMCU v2 built-in divider (0-3.3V): 3.3 / 1023.0
-// For custom divider for 4.2V LiPo: 4.2 / 1023.0
-const float BATTERY_VOLTAGE_MULTIPLIER = 4.2 / 1023.0; 
 
 EPaperDrive EPD(0, CS, RST, DC, BUSY, CLK, DIN);
 
@@ -177,16 +173,13 @@ void updateTrainStatus() {
 
         // Draw battery status
         int rawBattery = analogRead(BATTERY_PIN);
-        float batteryVoltage = rawBattery * BATTERY_VOLTAGE_MULTIPLIER;
         
-        // Simple percentage calculation for 3.7V nominal LiPo (4.2V max, ~3.3V min)
-        int batteryPercent = (batteryVoltage - 3.3) / (4.2 - 3.3) * 100;
-        if (batteryPercent > 100) batteryPercent = 100;
-        if (batteryPercent < 0) batteryPercent = 0;
+        // Raw battery range from 200 to 780
+        int batteryPercent = (rawBattery - 200) * 100 / (780 - 200);
 
         char batteryStringBuff[40];
         // Temporarily displaying the raw analog value (R:%d) to help with calibration
-        snprintf(batteryStringBuff, sizeof(batteryStringBuff), "Bat: %.1fV (%d%%) R:%d", batteryVoltage, batteryPercent, rawBattery);
+        snprintf(batteryStringBuff, sizeof(batteryStringBuff), "Bat: (%d%%) R:%d", batteryPercent, rawBattery);
         EPD.fontscale = 1;
         EPD.DrawUTF(250, 10, batteryStringBuff);
 
