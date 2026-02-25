@@ -38,19 +38,24 @@ EPaperDrive EPD(0, CS, RST, DC, BUSY, CLK, DIN);
 unsigned long lastUpdate = 0;
 const unsigned long updateInterval = 60000; // 60 seconds
 
+// Display a simple message and timestamp on the e-ink screen (used for errors and status updates)
+void displaySimpleMessage(const char* message) {
+  EPD.EPD_init_Full();
+  EPD.clearbuffer();
+  EPD.fontscale = 2;
+  EPD.SetFont(FONT12);
+  EPD.DrawUTF(10, 10, message);
+  EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
+  EPD.EPD_Update();
+  EPD.ReadBusy_long();
+  EPD.deepsleep();
+}
+
 void updateDisplay() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi not connected, skipping update.");
     // Display an error message on the e-ink screen if WiFi is not connected
-    EPD.EPD_init_Full();
-    EPD.clearbuffer();
-    EPD.fontscale = 2;
-    EPD.SetFont(FONT12);
-    EPD.DrawUTF(10, 10, "WiFi not connected");
-    EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
-    EPD.EPD_Update();
-    EPD.ReadBusy_long();
-    EPD.deepsleep();
+    displaySimpleMessage("WiFi not connected");
     return;
   }
 
@@ -71,8 +76,12 @@ void updateDisplay() {
 
         if (error) {
           Serial.print("deserializeJson() failed: ");
-          Serial.println(error.c_str());
+          String errorStr = error.c_str();
+          Serial.println(errorStr);
           http.end();
+          // Display an error message on the e-ink screen if JSON parsing fails
+          String errorMessage = String("JSON parse error: ") + errorStr;
+          displaySimpleMessage(errorMessage.c_str());
           return;
         }
 
@@ -160,13 +169,19 @@ void updateDisplay() {
 
       } else {
         Serial.printf("HTTP GET failed, error: %s\n", http.errorToString(httpCode).c_str());
+        // Display an error message on the e-ink screen if HTTP request fails
+        displaySimpleMessage("HTTP GET failed");
       }
     } else {
       Serial.printf("HTTP GET failed, error: %s\n", http.errorToString(httpCode).c_str());
+      // Display an error message on the e-ink screen if HTTP request fails
+      displaySimpleMessage("HTTP GET failed");
     }
     http.end();
   } else {
     Serial.println("Unable to connect to API");
+    // Display an error message on the e-ink screen if API connection fails
+    displaySimpleMessage("API connection failed");
   }
 }
 
@@ -177,7 +192,12 @@ void setup() {
   SPIFFS.begin();
   EPD.SetFS(&SPIFFS);
 
-  // 1. Connect to WiFi
+  // 1. Initialize Display
+  Serial.println("Initializing e-ink display...");
+  EPD.EPD_Set_Model(OPM42); 
+  displaySimpleMessage("Starting...");
+
+  // 2. Connect to WiFi
   Serial.print("Connecting to WiFi: ");
   Serial.println(ssid);
   WiFi.begin(ssid, password);
@@ -193,13 +213,13 @@ void setup() {
     Serial.println("\nWiFi connected!");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
+    displaySimpleMessage("WiFi connected!");
   } else {
     Serial.println("\nWiFi connection failed.");
+    displaySimpleMessage("WiFi connection failed");
   }
 
-  // 2. Initialize Display
-  Serial.println("Initializing e-ink display...");
-  EPD.EPD_Set_Model(OPM42); 
+
   
   // Initial update
   updateDisplay();
