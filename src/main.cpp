@@ -58,7 +58,7 @@ void displaySimpleMessage(const char* message) {
 
 
 
-void updateDisplay() {
+void updateTrainStatus() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi not connected, skipping update.");
     // Display an error message on the e-ink screen if WiFi is not connected
@@ -236,12 +236,12 @@ void setup() {
 
   
   // Initial update
-  updateDisplay();
+  updateTrainStatus();
 }
 
 void loop() {
   if (millis() - lastUpdate >= updateInterval) {
     lastUpdate = millis();
-    updateDisplay();
+    updateTrainStatus();
   }
 }
