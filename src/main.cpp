@@ -69,7 +69,9 @@ void updateDisplay() {
   std::unique_ptr<WiFiClientSecure> client(new WiFiClientSecure);
   client->setInsecure(); // Ignore SSL certificate validation for simplicity
   client->setBufferSizes(4096, 1024); // Reduce buffer size to save memory
+  client->setTimeout(10000); // Increase timeout to prevent IncompleteInput error
   HTTPClient http;
+  http.setTimeout(10000); // Increase HTTP timeout as well
 
   if (http.begin(*client, api_url)) {
     int httpCode = http.GET();
