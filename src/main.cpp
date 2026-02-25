@@ -68,15 +68,30 @@ void updateTrainStatus() {
 
   Serial.println("Fetching subway data...");
   
-  std::unique_ptr<WiFiClientSecure> client(new WiFiClientSecure);
-  client->setInsecure(); // Ignore SSL certificate validation for simplicity
-  client->setBufferSizes(4096, 1024); // Reduce buffer size to save memory
-  client->setTimeout(30000); // Increase timeout to prevent IncompleteInput error
-  HTTPClient http;
-  http.setTimeout(30000); // Increase HTTP timeout as well
+  // Free up some heap before allocating secure client
+  Serial.printf("Free Heap before client: %d\n", ESP.getFreeHeap());
 
+  std::unique_ptr<WiFiClientSecure> client(new WiFiClientSecure);
+  if (!client) {
+     Serial.println("Unable to create client");
+     return;
+  }
+  client->setInsecure(); // Ignore SSL certificate validation for simplicity
+  // 4096 for RX is often needed for SSL.
+  client->setBufferSizes(4096, 512); 
+  client->setTimeout(15000); // 15 seconds timeout
+  
+  Serial.printf("Free Heap after client: %d\n", ESP.getFreeHeap());
+
+  HTTPClient http;
+  http.useHTTP10(true); // Use HTTP/1.0 to reduce memory usage
+  http.setTimeout(15000); // Increase HTTP timeout as well
+
+  Serial.println("Starting HTTP request...");
   if (http.begin(*client, api_url)) {
+    Serial.println("Connected to server, sending GET...");
     int httpCode = http.GET();
+    Serial.printf("HTTP GET finished. Code: %d\n", httpCode);
     if (httpCode > 0) {
       if (httpCode == HTTP_CODE_OK) {
         // Parse JSON directly from stream to save memory
@@ -96,7 +111,7 @@ void updateTrainStatus() {
           http.end();
           // Display an error message on the e-ink screen if JSON parsing fails
           String errorMessage = String("JSON parse error: ") + errorStr;
-          displaySimpleMessage(errorMessage.c_str());
+          // displaySimpleMessage(errorMessage.c_str());
           return;
         }
 
@@ -200,10 +215,22 @@ void updateTrainStatus() {
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(74880); // Use 74880 to match boot log baud rate to see crash dumps
+  // Wait for serial to stabilize
+  delay(2000); 
   Serial.println("\n\nStarting custom firmware...");
+  Serial.flush(); // Ensure output is sent
 
-  SPIFFS.begin();
+  // Reduce WiFi TX power to save energy and prevent brownouts
+  WiFi.setOutputPower(10); // 0-20.5dBm, 10 is enough for close range
+  
+  Serial.println("Initializing SPIFFS...");
+  if (!SPIFFS.begin()) {
+    Serial.println("SPIFFS Mount Failed");
+  } else {
+    Serial.println("SPIFFS Mounted Successfully");
+  }
+  
   EPD.SetFS(&SPIFFS);
 
   // 1. Initialize Display
