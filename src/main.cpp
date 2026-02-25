@@ -16,9 +16,27 @@
 #define DIN 13
 #define BATTERY_PIN A0
 
-/*
+/**
+ * Program Summary:
+ * This software drives an e-ink display (ESP8266-based) to show real-time NYC Subway arrival times 
+ * for the N train at Fort Hamilton Pkwy (Stop ID: N03).
+ * 
+ * Key Features:
+ * - Connects to WiFi to fetch data from the subwaynow.app API.
+ * - Displays service status (e.g., "Good Service", "Delays") and alert summaries.
+ * - Lists upcoming northbound train arrivals in minutes.
+ * - Shows last update time and battery status.
+ * - Optimized for ESP8266 memory constraints using JSON filtering.
+ * 
+ * Hardware:
+ * - ESP8266 Microcontroller
+ * - E-ink Display (utilizing EPaperDrive library, configured for model OPM42)
+ * 
+ * Note:
+ * - The display is currently restricted to black and white mode due to issues with the red channel.
+ * - The code uses specific memory optimizations (buffer sizing, JSON filtering) to handle HTTPS responses on the constrained ESP8266.
+ */
 
-*/
 // Even though the hardware supports tri-color e-ink, this sketch only use black and white due to a bug with red not displaying at all. 
 
 // --- WiFi Configuration ---
