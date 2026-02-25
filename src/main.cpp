@@ -38,13 +38,19 @@ EPaperDrive EPD(0, CS, RST, DC, BUSY, CLK, DIN);
 unsigned long lastUpdate = 0;
 const unsigned long updateInterval = 60000; // 60 seconds
 
-// Display a simple message and timestamp on the e-ink screen (used for errors and status updates)
+// Display a simple message and uptime on the e-ink screen (used for errors and status updates)
 void displaySimpleMessage(const char* message) {
   EPD.EPD_init_Full();
   EPD.clearbuffer();
   EPD.fontscale = 2;
   EPD.SetFont(FONT12);
   EPD.DrawUTF(10, 10, message);
+  // show uptime in seconds to help with debugging
+  unsigned long uptimeSeconds = millis() / 1000;
+  char uptimeBuff[40];
+  snprintf(uptimeBuff, sizeof(uptimeBuff), "Uptime: %lu sec", uptimeSeconds);
+  EPD.fontscale = 1;
+  EPD.DrawUTF(10, 60, uptimeBuff);
   EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
   EPD.EPD_Update();
   EPD.ReadBusy_long();
@@ -131,15 +137,15 @@ void updateDisplay() {
            EPD.DrawUTF(yPos, 10, "No upcoming trains");
         }
 
-        // Draw last updated time
+        // Draw last updated time down to the second using the API's timestamp for reference
         if (currentTimestamp > 0) {
           time_t now = currentTimestamp;
           struct tm * timeinfo;
           setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1); // New York time
           tzset();
           timeinfo = localtime(&now);
-          char timeStringBuff[50];
-          strftime(timeStringBuff, sizeof(timeStringBuff), "Updated: %I:%M %p", timeinfo);
+          char timeStringBuff[40];
+          strftime(timeStringBuff, sizeof(timeStringBuff), "Updated: %H:%M:%S", timeinfo);
           
           EPD.fontscale = 1;
           EPD.DrawUTF(270, 10, timeStringBuff);
@@ -166,7 +172,6 @@ void updateDisplay() {
         EPD.ReadBusy_long();
         EPD.deepsleep();
         Serial.println("Display update complete.");
-
       } else {
         Serial.printf("HTTP GET failed, error: %s\n", http.errorToString(httpCode).c_str());
         // Display an error message on the e-ink screen if HTTP request fails
