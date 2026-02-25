@@ -49,7 +49,7 @@ void displaySimpleMessage(const char* message) {
   EPD.SetFont(FONT12);
   EPD.DrawUTF(10, 10, message);
   EPD.fontscale = 1;
-  EPD.DrawUTF(10, 60, uptimeStr);
+  EPD.DrawUTF(40, 10, uptimeStr);
   EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
   EPD.EPD_Update();
   EPD.ReadBusy_long();
@@ -69,9 +69,9 @@ void updateDisplay() {
   std::unique_ptr<WiFiClientSecure> client(new WiFiClientSecure);
   client->setInsecure(); // Ignore SSL certificate validation for simplicity
   client->setBufferSizes(4096, 1024); // Reduce buffer size to save memory
-  client->setTimeout(10000); // Increase timeout to prevent IncompleteInput error
+  client->setTimeout(30000); // Increase timeout to prevent IncompleteInput error
   HTTPClient http;
-  http.setTimeout(10000); // Increase HTTP timeout as well
+  http.setTimeout(30000); // Increase HTTP timeout as well
 
   if (http.begin(*client, api_url)) {
     int httpCode = http.GET();
