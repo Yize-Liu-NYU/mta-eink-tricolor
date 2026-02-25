@@ -37,8 +37,6 @@
  * - The code uses specific memory optimizations (buffer sizing, JSON filtering) to handle HTTPS responses on the constrained ESP8266.
  */
 
-// Even though the hardware supports tri-color e-ink, this sketch only use black and white due to a bug with red not displaying at all. 
-
 // --- WiFi Configuration ---
 const char* ssid     = "HStark-NY";
 const char* password = "116208818";
