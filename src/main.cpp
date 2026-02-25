@@ -14,6 +14,7 @@
 #define BUSY 4
 #define CLK 14
 #define DIN 13
+#define BATTERY_PIN A0
 
 // A program that checks the subwaynow API for the next uptown N train arrivals at Fort Hamilton Parkway and displays it on an e-ink display, along with battery status. The program updates every 60 seconds.
 // Note: The ESP8266 does not have a built-in RTC, so the "minutes away" calculation is based on the API's provided timestamp. For accurate timekeeping, consider adding an NTP sync or using an RTC module in a production version of this firmware.
@@ -26,9 +27,6 @@ const char* password = "116208818";
 // --- API Configuration ---
 const char* api_url = "https://api.subwaynow.app/stops/N03";
 
-// --- Battery Configuration ---
-#define BATTERY_PIN A0
-
 EPaperDrive EPD(0, CS, RST, DC, BUSY, CLK, DIN);
 
 unsigned long lastUpdate = 0;
@@ -38,33 +36,82 @@ const unsigned long updateInterval = 60000; // 60 seconds
 void displaySimpleMessage(const char* message) {
   EPD.EPD_init_Full();
   EPD.clearbuffer();
-  // show uptime in seconds to help with debugging
-  unsigned long uptimeSeconds = millis() / 1000;
-  String uptimeStr = "Uptime: " + String(uptimeSeconds) + "s";
   EPD.fontscale = 2;
   EPD.SetFont(FONT12);
   EPD.DrawUTF(10, 10, message);
   EPD.fontscale = 1;
-  EPD.DrawUTF(40, 10, uptimeStr);
+  EPD.DrawUTF(40, 10, "Uptime: " + String(millis() / 1000) + "s");
   EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
   EPD.EPD_Update();
   EPD.ReadBusy_long();
   EPD.deepsleep();
 }
 
+void drawTrainData(DynamicJsonDocument& doc) {
+  EPD.EPD_init_Full();
+  EPD.clearbuffer();
+  EPD.fontscale = 2;
+  EPD.SetFont(FONT12);
 
+  EPD.DrawUTF(10, 10, "Uptown N Train Arrivals:");
+  EPD.DrawUTF(40, 10, "Fort Hamilton Pkwy");
+
+  int yPos = 80;
+  int count = 0;
+  long currentTimestamp = doc["timestamp"];
+  
+  for (JsonObject trip : doc["upcoming_trips"]["north"].as<JsonArray>()) {
+    if (count >= 3) break; // Show up to 3 arrivals
+    
+    long arrivalTime = trip["estimated_current_stop_arrival_time"];
+    if (arrivalTime == 0) arrivalTime = trip["current_stop_arrival_time"];
+    
+    if (arrivalTime > 0) {
+      int minutesAway = (arrivalTime - currentTimestamp) / 60;
+      EPD.DrawUTF(yPos, 10, minutesAway <= 0 ? "Now" : String(minutesAway) + " min");
+      yPos += 40;
+      count++;
+    }
+  }
+  
+  if (count == 0) EPD.DrawUTF(yPos, 10, "No upcoming trains");
+
+  // Draw last updated time down to the second using the API's timestamp for reference
+  if (currentTimestamp > 0) {
+    time_t now = currentTimestamp;
+    setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1); // New York time
+    tzset();
+    char timeStringBuff[40];
+    strftime(timeStringBuff, sizeof(timeStringBuff), "Updated: %H:%M:%S", localtime(&now));
+    EPD.fontscale = 1;
+    EPD.DrawUTF(270, 10, timeStringBuff);
+  }
+
+  // Draw battery status
+  int rawBattery = analogRead(BATTERY_PIN);
+  int batteryPercent = (rawBattery - 200) * 100 / (780 - 200);
+  char batteryStringBuff[40];
+  snprintf(batteryStringBuff, sizeof(batteryStringBuff), "Bat: (%d%%) R:%d", batteryPercent, rawBattery);
+  
+  EPD.fontscale = 1;
+  EPD.DrawUTF(250, 10, batteryStringBuff);
+
+  EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
+  Serial.println("Updating display...");
+  EPD.EPD_Update();
+  EPD.ReadBusy_long();
+  EPD.deepsleep();
+  Serial.println("Display update complete.");
+}
 
 void updateTrainStatus() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi not connected, skipping update.");
-    // Display an error message on the e-ink screen if WiFi is not connected
     displaySimpleMessage("WiFi not connected");
     return;
   }
 
   Serial.println("Fetching subway data...");
-  
-  // Free up some heap before allocating secure client
   Serial.printf("Free Heap before client: %d\n", ESP.getFreeHeap());
 
   std::unique_ptr<WiFiClientSecure> client(new WiFiClientSecure);
@@ -72,175 +119,79 @@ void updateTrainStatus() {
      Serial.println("Unable to create client");
      return;
   }
-  client->setInsecure(); // Ignore SSL certificate validation for simplicity
-  // 4096 for RX is often needed for SSL.
-  client->setBufferSizes(4096, 512); 
-  client->setTimeout(15000); // 15 seconds timeout
+  
+  client->setInsecure(); // Ignore SSL certificate validation
+  client->setBufferSizes(8192, 512); // Increasing RX buffer to 8KB to prevent IncompleteInput errors
+  client->setTimeout(20000); // 20 seconds timeout
   
   Serial.printf("Free Heap after client: %d\n", ESP.getFreeHeap());
 
   HTTPClient http;
   http.useHTTP10(true); // Use HTTP/1.0 to reduce memory usage
-  http.setTimeout(15000); // Increase HTTP timeout as well
+  http.setTimeout(20000); // Increase HTTP timeout to match client
 
   Serial.println("Starting HTTP request...");
   if (http.begin(*client, api_url)) {
     Serial.println("Connected to server, sending GET...");
     int httpCode = http.GET();
     Serial.printf("HTTP GET finished. Code: %d\n", httpCode);
-    if (httpCode > 0) {
-      if (httpCode == HTTP_CODE_OK) {
-        // Parse JSON directly from stream to save memory
-        // Use a filter to only parse the fields we need, avoiding NoMemory errors
-        StaticJsonDocument<200> filter;
-        filter["upcoming_trips"]["north"][0]["estimated_current_stop_arrival_time"] = true;
-        filter["upcoming_trips"]["north"][0]["current_stop_arrival_time"] = true;
-        filter["timestamp"] = true;
+    
+    if (httpCode == HTTP_CODE_OK) {
+      // Print content length for debugging
+      int len = http.getSize();
+      Serial.printf("Content-Length: %d\n", len);
 
-        DynamicJsonDocument doc(2048);
-        DeserializationError error = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+      StaticJsonDocument<200> filter;
+      filter["upcoming_trips"]["north"][0]["estimated_current_stop_arrival_time"] = true;
+      filter["upcoming_trips"]["north"][0]["current_stop_arrival_time"] = true;
+      filter["timestamp"] = true;
 
-        if (error) {
-          Serial.print("deserializeJson() failed: ");
-          String errorStr = error.c_str();
-          Serial.println(errorStr);
-          http.end();
-          // Display an error message on the e-ink screen if JSON parsing fails
-          String errorMessage = String("JSON parse error: ") + errorStr;
-          // displaySimpleMessage(errorMessage.c_str());
-          return;
-        }
+      // Use heap allocation for doc, 3KB should be enough for the filtered result and some overhead
+      DynamicJsonDocument doc(3072);
+      
+      // Deserialize directly from stream using the filter to minimize memory usage
+      DeserializationError error = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
 
-        // Extract uptown N train arrivals
-        JsonArray northTrips = doc["upcoming_trips"]["north"];
-        
-        EPD.EPD_init_Full();
-        EPD.clearbuffer();
-        EPD.fontscale = 2;
-        EPD.SetFont(FONT12);
-
-        EPD.DrawUTF(10, 10, "Uptown N Train Arrivals:");
-        EPD.DrawUTF(40, 10, "Fort Hamilton Pkwy");
-
-        int yPos = 80;
-        int count = 0;
-        
-        long currentTimestamp = doc["timestamp"];
-        
-        for (JsonObject trip : northTrips) {
-          if (count >= 3) break; // Show up to 3 arrivals
-          
-          long arrivalTime = trip["estimated_current_stop_arrival_time"];
-          if (arrivalTime == 0) {
-             arrivalTime = trip["current_stop_arrival_time"];
-          }
-          
-          if (arrivalTime > 0) {
-            // Calculate minutes away
-            // Note: The ESP8266 doesn't have a built-in RTC synced to NTP by default in this sketch.
-            // For accurate "minutes away", we need the current Unix time.
-            // The API provides a "timestamp" field we can use as the current time.
-            int minutesAway = (arrivalTime - currentTimestamp) / 60;
-            
-            String arrivalStr = String(minutesAway) + " min";
-            if (minutesAway <= 0) {
-              arrivalStr = "Now";
-            }
-            
-            EPD.DrawUTF(yPos, 10, arrivalStr);
-            yPos += 40;
-            count++;
-          }
-        }
-        
-        if (count == 0) {
-           EPD.DrawUTF(yPos, 10, "No upcoming trains");
-        }
-
-        // Draw last updated time down to the second using the API's timestamp for reference
-        if (currentTimestamp > 0) {
-          time_t now = currentTimestamp;
-          struct tm * timeinfo;
-          setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1); // New York time
-          tzset();
-          timeinfo = localtime(&now);
-          char timeStringBuff[40];
-          strftime(timeStringBuff, sizeof(timeStringBuff), "Updated: %H:%M:%S", timeinfo);
-          
-          EPD.fontscale = 1;
-          EPD.DrawUTF(270, 10, timeStringBuff);
-        }
-
-        // Draw battery status
-        int rawBattery = analogRead(BATTERY_PIN);
-        
-        // Raw battery range from 200 to 780
-        int batteryPercent = (rawBattery - 200) * 100 / (780 - 200);
-
-        char batteryStringBuff[40];
-        // Temporarily displaying the raw analog value (R:%d) to help with calibration
-        snprintf(batteryStringBuff, sizeof(batteryStringBuff), "Bat: (%d%%) R:%d", batteryPercent, rawBattery);
-        EPD.fontscale = 1;
-        EPD.DrawUTF(250, 10, batteryStringBuff);
-
-        EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
-        Serial.println("Updating display...");
-        EPD.EPD_Update();
-        EPD.ReadBusy_long();
-        EPD.deepsleep();
-        Serial.println("Display update complete.");
+      if (!error) {
+        drawTrainData(doc);
       } else {
-        Serial.printf("HTTP GET failed, error: %s\n", http.errorToString(httpCode).c_str());
-        // Display an error message on the e-ink screen if HTTP request fails
-        displaySimpleMessage("HTTP GET failed");
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
       }
     } else {
       Serial.printf("HTTP GET failed, error: %s\n", http.errorToString(httpCode).c_str());
-      // Display an error message on the e-ink screen if HTTP request fails
       displaySimpleMessage("HTTP GET failed");
     }
     http.end();
   } else {
     Serial.println("Unable to connect to API");
-    // Display an error message on the e-ink screen if API connection fails
     displaySimpleMessage("API connection failed");
   }
 }
 
 void setup() {
   Serial.begin(74880); // Use 74880 to match boot log baud rate to see crash dumps
-  // Wait for serial to stabilize
   delay(2000); 
   Serial.println("\n\nStarting custom firmware...");
-  Serial.flush(); // Ensure output is sent
+  Serial.flush();
 
-  // Reduce WiFi TX power to save energy and prevent brownouts
-  WiFi.setOutputPower(10); // 0-20.5dBm, 10 is enough for close range
+  WiFi.setOutputPower(15); // 0-20.5dBm, 10 is enough for close range
   
-  Serial.println("Initializing SPIFFS...");
-  if (!SPIFFS.begin()) {
-    Serial.println("SPIFFS Mount Failed");
-  } else {
-    Serial.println("SPIFFS Mounted Successfully");
-  }
-  
+  Serial.println(SPIFFS.begin() ? "SPIFFS Mounted Successfully" : "SPIFFS Mount Failed");
   EPD.SetFS(&SPIFFS);
 
-  // 1. Initialize Display
   Serial.println("Initializing e-ink display...");
   EPD.EPD_Set_Model(OPM42); 
   displaySimpleMessage("Starting...");
 
-  // 2. Connect to WiFi
   Serial.print("Connecting to WiFi: ");
   Serial.println(ssid);
   WiFi.begin(ssid, password);
   
   int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
+  while (WiFi.status() != WL_CONNECTED && retries++ < 20) {
     delay(500);
     Serial.print(".");
-    retries++;
   }
   
   if (WiFi.status() == WL_CONNECTED) {
@@ -253,9 +204,6 @@ void setup() {
     displaySimpleMessage("WiFi connection failed");
   }
 
-
-  
-  // Initial update
   updateTrainStatus();
 }
 
