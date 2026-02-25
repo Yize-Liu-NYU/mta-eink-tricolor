@@ -200,7 +200,7 @@ void updateDisplay() {
 }
 
 void setup() {
-  Serial.begin(460800);
+  Serial.begin(9600);
   Serial.println("\n\nStarting custom firmware...");
 
   SPIFFS.begin();
