@@ -16,16 +16,21 @@
 #define DIN 13
 #define BATTERY_PIN A0
 
-// A program that checks the subwaynow API for the next uptown N train arrivals at Fort Hamilton Parkway and displays it on an e-ink display, along with battery status. The program updates every 60 seconds.
-// Note: The ESP8266 does not have a built-in RTC, so the "minutes away" calculation is based on the API's provided timestamp. For accurate timekeeping, consider adding an NTP sync or using an RTC module in a production version of this firmware.
-// Even though the hardware supports tri-color e-ink, this sketch only use black and white due to a bug with 
+/*
 
-// --- WiFi Configuration (Extracted from firmware dump) ---
+*/
+// Even though the hardware supports tri-color e-ink, this sketch only use black and white due to a bug with red not displaying at all. 
+
+// --- WiFi Configuration ---
 const char* ssid     = "HStark-NY";
 const char* password = "116208818";
 
 // --- API Configuration ---
 const char* api_url = "https://api.subwaynow.app/stops/N03";
+const char* status_api_url = "https://api.subwaynow.app/routes/N";
+
+String northStatus = "Unknown";
+String northSummary = "";
 
 EPaperDrive EPD(0, CS, RST, DC, BUSY, CLK, DIN);
 
@@ -47,16 +52,108 @@ void displaySimpleMessage(const char* message) {
   EPD.deepsleep();
 }
 
+void checkServiceStatus() {
+  Serial.println("Checking service status...");
+  std::unique_ptr<WiFiClientSecure> client(new WiFiClientSecure);
+  if (!client) {
+     Serial.println("Unable to create secure client");
+     return;
+  }
+  
+  client->setInsecure();
+  // Using 4KB rx buffer to save heap, expecting the status field to be early in the JSON.
+  // 8KB might be pushing the limits if we have other things allocated.
+  client->setBufferSizes(4096, 512); 
+  client->setTimeout(10000);
+  
+  HTTPClient http;
+  http.useHTTP10(true);
+  http.setTimeout(10000);
+  
+  if (http.begin(*client, status_api_url)) {
+    int httpCode = http.GET();
+    if (httpCode == HTTP_CODE_OK) {
+      // Find the status manually in the stream to avoid parsing the huge JSON?
+      // Or try parsing again with filter. The fields are at the top.
+      // If deserializeJson attempts to read the WHOLE stream (which is huge), it might error out if the stream dies.
+      // Let's try to just read the stream into a string until we find "direction_statuses" or similar?
+      // No, that's brittle.
+      
+      // Let's try filter again but be aware it might fail if the stream is too long.
+      // A trick is to use a smaller document and HOPE the filter catches it early and we don't care about the rest?
+      // ArduinoJson normally reads until the end.
+      
+      StaticJsonDocument<200> filter;
+      filter["direction_statuses"]["north"] = true;
+      filter["service_irregularity_summaries"]["north"] = true;
+      
+      DynamicJsonDocument doc(1536); 
+      // If the input is truncated, we might still have the data we need in the doc.
+      DeserializationError error = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+      
+      // If IncompleteInput, we might still have partial data.
+      if (!error || error == DeserializationError::IncompleteInput) {
+        if (doc.containsKey("direction_statuses")) {
+            northStatus = doc["direction_statuses"]["north"].as<String>();
+        }
+        if (doc.containsKey("service_irregularity_summaries")) {
+            northSummary = doc["service_irregularity_summaries"]["north"].as<String>();
+        }
+        
+        if (northStatus == "null") northStatus = "Unknown";
+        if (northSummary == "null") northSummary = "";
+        
+        Serial.println("Status: " + northStatus);
+        Serial.println("Summary: " + northSummary);
+      } else {
+        Serial.print("Status deserializeJson() failed: ");
+        Serial.println(error.c_str());
+      }
+    } else {
+      Serial.printf("Status HTTP GET failed, error: %s\n", http.errorToString(httpCode).c_str());
+    }
+    http.end();
+  } else {
+    Serial.println("Unable to connect to Status API");
+  }
+}
+
 void drawTrainData(DynamicJsonDocument& doc) {
   EPD.EPD_init_Full();
   EPD.clearbuffer();
   EPD.fontscale = 2;
   EPD.SetFont(FONT12);
 
-  EPD.DrawUTF(10, 10, "Uptown N Train Arrivals:");
+  // Layout: Header with Status
+  String headerText = "N Train: " + (northStatus.length() > 0 ? northStatus : "Unknown");
+  EPD.DrawUTF(10, 10, headerText);
+  
+  // Station Name
   EPD.DrawUTF(40, 10, "Fort Hamilton Pkwy");
 
   int yPos = 80;
+  
+  // Check for service alerts
+  if (northSummary.length() > 0 && northSummary != "null" && northSummary != "") {
+    // If there's an alert, display it prominently
+    // We might need to reduce font size or truncate if it's very long
+    EPD.fontscale = 1;
+    // Simple truncation for now to fit one line, or maybe two
+    // A full summary can be long. Let's try to fit 2 lines if needed.
+    // 4.2 inch fits roughly 30-40 chars per line at scale 1?
+    if (northSummary.length() > 35) {
+       EPD.DrawUTF(yPos, 10, northSummary.substring(0, 35));
+       yPos += 20;
+       int len = northSummary.length();
+       int end = len < 70 ? len : 70;
+       EPD.DrawUTF(yPos, 10, northSummary.substring(35, end));
+    } else {
+       EPD.DrawUTF(yPos, 10, northSummary);
+    }
+    yPos += 30; // Spacing after alert
+    EPD.fontscale = 2; // Restore font scale for times
+  }
+
   int count = 0;
   long currentTimestamp = doc["timestamp"];
   
@@ -79,8 +176,11 @@ void drawTrainData(DynamicJsonDocument& doc) {
   // Draw last updated time down to the second using the API's timestamp for reference
   if (currentTimestamp > 0) {
     time_t now = currentTimestamp;
-    setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1); // New York time
+    
+    // Set Timezone
+    setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1); 
     tzset();
+    
     char timeStringBuff[40];
     strftime(timeStringBuff, sizeof(timeStringBuff), "Updated: %H:%M:%S", localtime(&now));
     EPD.fontscale = 1;
@@ -110,6 +210,9 @@ void updateTrainStatus() {
     displaySimpleMessage("WiFi not connected");
     return;
   }
+  
+  // Check service status first
+  checkServiceStatus();
 
   Serial.println("Fetching subway data...");
   Serial.printf("Free Heap before client: %d\n", ESP.getFreeHeap());
