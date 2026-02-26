@@ -125,6 +125,39 @@ void checkServiceStatus() {
   }
 }
 
+// Draw the MTA N-train subway circle icon: solid black circle with a white "N".
+// The display axes: x = vertical (rows from top), y = horizontal (cols from left).
+// Placed in the blank right-center area of the 400×300 display.
+void drawNTrainIcon() {
+  const int cx = 155;  // center row  (vertical axis)
+  const int cy = 240;  // center col  (horizontal axis)
+  const int r  = 52;   // circle radius
+
+  // 1. Solid black filled circle
+  EPD.DrawCircle(cx, cy, r, true);
+
+  // FONT32 glyphs are 32 px tall. "N" is ~20 px wide at scale 1.
+  // Top-left of glyph placed at (cx-16, cy-10) so it's centered in the circle.
+  const int gx = cx - 16;  // glyph top row
+  const int gy = cy - 10;  // glyph left col
+
+  // 2. Inverse the N bounding rectangle (all-black from filled circle → all-white)
+  EPD.Inverse(gx - 2, gx + 34, gy - 2, gy + 22);
+
+  // 3. Draw "N" → black N on now-white rectangle
+  EPD.SetFont(FONT32);
+  EPD.fontscale = 1;
+  EPD.DrawUTF(gx, gy, "N");
+
+  // 4. Inverse the same rectangle again → white N on black rectangle,
+  //    which is fully inside the circle so it merges seamlessly with the black fill.
+  EPD.Inverse(gx - 2, gx + 34, gy - 2, gy + 22);
+
+  // Restore drawing state
+  EPD.SetFont(FONT12);
+  EPD.fontscale = 2;
+}
+
 void drawTrainData(DynamicJsonDocument& doc) {
   EPD.EPD_init_Full();
   EPD.clearbuffer();
@@ -137,6 +170,9 @@ void drawTrainData(DynamicJsonDocument& doc) {
   
   // Station Name
   EPD.DrawUTF(40, 10, "Fort Hamilton Pkwy");
+
+  // N-train circle icon in the blank right-center area of the display
+  drawNTrainIcon();
 
   int yPos = 80;
   
