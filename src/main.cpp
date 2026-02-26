@@ -58,8 +58,8 @@ const unsigned long updateInterval = 60000; // 60 seconds
 void displaySimpleMessage(const char* message) {
   EPD.EPD_init_Full();
   EPD.clearbuffer();
-  EPD.fontscale = 2;
-  EPD.SetFont(FONT12);
+  EPD.fontscale = 1;
+  EPD.SetFont(FONT32);
   EPD.DrawUTF(10, LEFT_MARGIN, message);
   EPD.fontscale = 1;
   {
@@ -152,8 +152,8 @@ void drawNTrainIcon() {
   EPD.Inverse(gx - 2, gx + 66, gy - 2, gy + 42);
 
   // 3. Draw "N" → black N on now-white rectangle
-  EPD.SetFont(FONT12);
-  EPD.fontscale = 2;
+  EPD.SetFont(FONT32);
+  EPD.fontscale = 1;
   EPD.DrawUTF(gx, gy, "N");
 
   // 4. Inverse the same rectangle again → white N on black rectangle,
@@ -161,8 +161,8 @@ void drawNTrainIcon() {
   EPD.Inverse(gx - 2, gx + 66, gy - 2, gy + 42);
 
   // Restore drawing state
-  EPD.SetFont(FONT12);
-  EPD.fontscale = 2;
+  EPD.SetFont(FONT32);
+  EPD.fontscale = 1;
 }
 
 void drawTrainData(DynamicJsonDocument& doc) {
@@ -204,8 +204,8 @@ void drawTrainData(DynamicJsonDocument& doc) {
   }
 
   // Status of the line
-  EPD.SetFont(FONT12);
-  EPD.fontscale = 2;
+  EPD.SetFont(FONT32);
+  EPD.fontscale = 1;
   String statusText = "Status: " + (northStatus.length() > 0 ? northStatus : "Unknown");
   EPD.DrawUTF(yPos, LEFT_MARGIN, statusText);
   yPos += 30;
@@ -222,8 +222,8 @@ void drawTrainData(DynamicJsonDocument& doc) {
     if (arrivalTime > 0) {
       int minutesAway = (arrivalTime - currentTimestamp) / 60;
       if (count == 0) {
-        EPD.SetFont(FONT12);
-        EPD.fontscale = 2;
+        EPD.SetFont(FONT32);
+        EPD.fontscale = 1;
       } else {
         EPD.SetFont(FONT12);
         EPD.fontscale = 1;
