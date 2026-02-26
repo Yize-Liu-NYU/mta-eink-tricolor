@@ -226,7 +226,7 @@ void drawTrainData(DynamicJsonDocument& doc) {
   // Status of the line (FONT32 scale=1 = 32px tall, 40px step = 8px gap)
   EPD.SetFont(FONT32);
   EPD.fontscale = 1;
-  String statusText = "Status: " + (northStatus.length() > 0 ? northStatus : "Unknown");
+  String statusText = (northStatus.length() > 0 ? northStatus : "Unknown");
   if (northServiceType.length() > 0) statusText += " | " + northServiceType;
   EPD.DrawUTF(yPos, LEFT_MARGIN, statusText);
   yPos += 40;
