@@ -174,21 +174,12 @@ void drawTrainData(DynamicJsonDocument& doc) {
   // Station Name and direction
   String headerText = "N Train, Ft Hamilton Pkwy, North Bound ";
   EPD.DrawUTF(10, LEFT_MARGIN, headerText);
-  
-  // Status of the line
-  EPD.SetFont(FONT12);
-  EPD.fontscale = 2;
-  String statusText = "Status: " + (northStatus.length() > 0 ? northStatus : "Unknown");
-  EPD.DrawUTF(40, LEFT_MARGIN, statusText);
-
-  EPD.SetFont(FONT12);
-  EPD.fontscale = 2; 
 
   // N-train circle icon in the blank right-center area of the display (skipped rn)
   // drawNTrainIcon();
 
-  int yPos = 80;
-  
+  int yPos = 30;
+
   // Check for service alerts
   if (northSummary.length() > 0 && northSummary != "null" && northSummary != "") {
     EPD.fontscale = 1;
@@ -209,9 +200,15 @@ void drawTrainData(DynamicJsonDocument& doc) {
         yPos += 15;
       }
     }
-    yPos += 10; // Spacing after alert
-    EPD.fontscale = 2; // Restore font scale for times
+    yPos += 5; // Spacing after alert
   }
+
+  // Status of the line
+  EPD.SetFont(FONT12);
+  EPD.fontscale = 2;
+  String statusText = "Status: " + (northStatus.length() > 0 ? northStatus : "Unknown");
+  EPD.DrawUTF(yPos, LEFT_MARGIN, statusText);
+  yPos += 30;
 
   int count = 0;
   long currentTimestamp = doc["timestamp"];
