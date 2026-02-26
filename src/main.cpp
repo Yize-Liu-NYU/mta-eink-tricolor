@@ -152,7 +152,7 @@ void drawNTrainIcon() {
   EPD.Inverse(gx - 2, gx + 66, gy - 2, gy + 42);
 
   // 3. Draw "N" → black N on now-white rectangle
-  EPD.SetFont(FONT32);
+  EPD.SetFont(FONT12);
   EPD.fontscale = 2;
   EPD.DrawUTF(gx, gy, "N");
 
@@ -168,15 +168,21 @@ void drawNTrainIcon() {
 void drawTrainData(DynamicJsonDocument& doc) {
   EPD.EPD_init_Full();
   EPD.clearbuffer();
-  EPD.fontscale = 2;
+  EPD.fontscale = 1;
   EPD.SetFont(FONT12);
 
-  // Layout: Header with Status
-  String headerText = "N Train: " + (northStatus.length() > 0 ? northStatus : "Unknown");
+  // Station Name and direction
+  String headerText = "N Train, Ft Hamilton Pkwy, North Bound ";
   EPD.DrawUTF(10, LEFT_MARGIN, headerText);
   
-  // Station Name
-  EPD.DrawUTF(40, LEFT_MARGIN, "Fort Hamilton Pkwy");
+  // Status of the line
+  EPD.SetFont(FONT12);
+  EPD.fontscale = 2;
+  String statusText = "Status: " + (northStatus.length() > 0 ? northStatus : "Unknown");
+  EPD.DrawUTF(40, LEFT_MARGIN, statusText);
+
+  EPD.SetFont(FONT12);
+  EPD.fontscale = 2; 
 
   // N-train circle icon in the blank right-center area of the display (skipped rn)
   // drawNTrainIcon();
@@ -185,22 +191,25 @@ void drawTrainData(DynamicJsonDocument& doc) {
   
   // Check for service alerts
   if (northSummary.length() > 0 && northSummary != "null" && northSummary != "") {
-    // If there's an alert, display it prominently
-    // We might need to reduce font size or truncate if it's very long
     EPD.fontscale = 1;
-    // Simple truncation for now to fit one line, or maybe two
-    // A full summary can be long. Let's try to fit 2 lines if needed.
-    // 4.2 inch fits roughly 30-40 chars per line at scale 1?
-    if (northSummary.length() > 35) {
-       EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(0, 35));
-       yPos += 20;
-       int len = northSummary.length();
-       int end = len < 70 ? len : 70;
-       EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(35, end));
-    } else {
-       EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary);
+    EPD.SetFont(FONT12);
+    // FONT12 at scale=1: ~6px/char, 390px usable width → ~65 chars/line
+    const int charsPerLine = 65;
+    int len = northSummary.length();
+    // Line 1
+    EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(0, min(len, charsPerLine)));
+    yPos += 15;
+    if (len > charsPerLine) {
+      // Line 2
+      EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(charsPerLine, min(len, charsPerLine * 2)));
+      yPos += 15;
+      if (len > charsPerLine * 2) {
+        // Line 3
+        EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(charsPerLine * 2, min(len, charsPerLine * 3)));
+        yPos += 15;
+      }
     }
-    yPos += 30; // Spacing after alert
+    yPos += 10; // Spacing after alert
     EPD.fontscale = 2; // Restore font scale for times
   }
 
@@ -215,6 +224,13 @@ void drawTrainData(DynamicJsonDocument& doc) {
     
     if (arrivalTime > 0) {
       int minutesAway = (arrivalTime - currentTimestamp) / 60;
+      if (count == 0) {
+        EPD.SetFont(FONT12);
+        EPD.fontscale = 2;
+      } else {
+        EPD.SetFont(FONT12);
+        EPD.fontscale = 1;
+      }
       EPD.DrawUTF(yPos, LEFT_MARGIN, minutesAway <= 0 ? "Now" : String(minutesAway) + " min");
       yPos += 40;
       count++;
@@ -224,6 +240,7 @@ void drawTrainData(DynamicJsonDocument& doc) {
   if (count == 0) EPD.DrawUTF(yPos, LEFT_MARGIN, "No upcoming trains");
 
   // Footer rows (fontscale=1, FONT12 ~12px tall): 250 → 265 → 280, consistent 15px steps
+  EPD.SetFont(FONT12);
   EPD.fontscale = 1;
 
   // Draw last updated time (row 250)
