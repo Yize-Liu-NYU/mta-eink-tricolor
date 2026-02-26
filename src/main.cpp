@@ -15,6 +15,7 @@
 #define CLK 14
 #define DIN 13
 #define BATTERY_PIN A0
+#define LEFT_MARGIN 10
 
 /**
  * Program Summary:
@@ -59,9 +60,15 @@ void displaySimpleMessage(const char* message) {
   EPD.clearbuffer();
   EPD.fontscale = 2;
   EPD.SetFont(FONT12);
-  EPD.DrawUTF(10, 10, message);
+  EPD.DrawUTF(10, LEFT_MARGIN, message);
   EPD.fontscale = 1;
-  EPD.DrawUTF(40, 10, "Uptime: " + String(millis() / 1000) + "s");
+  {
+    unsigned long _us = millis() / 1000;
+    char _ub[40];
+    snprintf(_ub, sizeof(_ub), "Uptime: %lud %02luh %02lum %02lus",
+             _us / 86400, (_us % 86400) / 3600, (_us % 3600) / 60, _us % 60);
+    EPD.DrawUTF(40, LEFT_MARGIN, _ub);
+  }
   EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
   EPD.EPD_Update();
   EPD.ReadBusy_long();
@@ -166,10 +173,10 @@ void drawTrainData(DynamicJsonDocument& doc) {
 
   // Layout: Header with Status
   String headerText = "N Train: " + (northStatus.length() > 0 ? northStatus : "Unknown");
-  EPD.DrawUTF(10, 10, headerText);
+  EPD.DrawUTF(10, LEFT_MARGIN, headerText);
   
   // Station Name
-  EPD.DrawUTF(40, 10, "Fort Hamilton Pkwy");
+  EPD.DrawUTF(40, LEFT_MARGIN, "Fort Hamilton Pkwy");
 
   // N-train circle icon in the blank right-center area of the display (skipped rn)
   // drawNTrainIcon();
@@ -185,13 +192,13 @@ void drawTrainData(DynamicJsonDocument& doc) {
     // A full summary can be long. Let's try to fit 2 lines if needed.
     // 4.2 inch fits roughly 30-40 chars per line at scale 1?
     if (northSummary.length() > 35) {
-       EPD.DrawUTF(yPos, 10, northSummary.substring(0, 35));
+       EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(0, 35));
        yPos += 20;
        int len = northSummary.length();
        int end = len < 70 ? len : 70;
-       EPD.DrawUTF(yPos, 10, northSummary.substring(35, end));
+       EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(35, end));
     } else {
-       EPD.DrawUTF(yPos, 10, northSummary);
+       EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary);
     }
     yPos += 30; // Spacing after alert
     EPD.fontscale = 2; // Restore font scale for times
@@ -208,36 +215,42 @@ void drawTrainData(DynamicJsonDocument& doc) {
     
     if (arrivalTime > 0) {
       int minutesAway = (arrivalTime - currentTimestamp) / 60;
-      EPD.DrawUTF(yPos, 10, minutesAway <= 0 ? "Now" : String(minutesAway) + " min");
+      EPD.DrawUTF(yPos, LEFT_MARGIN, minutesAway <= 0 ? "Now" : String(minutesAway) + " min");
       yPos += 40;
       count++;
     }
   }
   
-  if (count == 0) EPD.DrawUTF(yPos, 10, "No upcoming trains");
+  if (count == 0) EPD.DrawUTF(yPos, LEFT_MARGIN, "No upcoming trains");
 
-  // Draw last updated time down to the second using the API's timestamp for reference
+  // Footer rows (fontscale=1, FONT12 ~12px tall): 250 → 265 → 280, consistent 15px steps
+  EPD.fontscale = 1;
+
+  // Draw last updated time (row 250)
   if (currentTimestamp > 0) {
     time_t now = currentTimestamp;
-    
-    // Set Timezone
-    setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1); 
+    setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1);
     tzset();
-    
     char timeStringBuff[40];
     strftime(timeStringBuff, sizeof(timeStringBuff), "Updated: %H:%M:%S", localtime(&now));
-    EPD.fontscale = 1;
-    EPD.DrawUTF(270, 10, timeStringBuff);
+    EPD.DrawUTF(250, LEFT_MARGIN, timeStringBuff);
   }
 
-  // Draw battery status
+  // Draw battery status (row 265)
   int rawBattery = analogRead(BATTERY_PIN);
   int batteryPercent = (rawBattery - 200) * 100 / (780 - 200);
   char batteryStringBuff[40];
   snprintf(batteryStringBuff, sizeof(batteryStringBuff), "Bat: (%d%%) R:%d", batteryPercent, rawBattery);
-  
-  EPD.fontscale = 1;
-  EPD.DrawUTF(250, 10, batteryStringBuff);
+  EPD.DrawUTF(265, LEFT_MARGIN, batteryStringBuff);
+
+  // Draw uptime (row 280)
+  char uptimeStringBuff[48];
+  {
+    unsigned long _us = millis() / 1000;
+    snprintf(uptimeStringBuff, sizeof(uptimeStringBuff), "Uptime: %lud %02luh %02lum %02lus",
+             _us / 86400, (_us % 86400) / 3600, (_us % 3600) / 60, _us % 60);
+  }
+  EPD.DrawUTF(280, LEFT_MARGIN, uptimeStringBuff);
 
   EPD.EPD_Transfer_Full_BW((unsigned char *)EPD.EPDbuffer, 1);
   Serial.println("Updating display...");
