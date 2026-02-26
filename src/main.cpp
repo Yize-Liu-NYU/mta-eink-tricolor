@@ -48,6 +48,7 @@ const char* status_api_url = "https://api.subwaynow.app/routes/N";
 
 String northStatus = "Unknown";
 String northSummary = "";
+String northServiceType = "";  // "Local" or "Express"
 
 EPaperDrive EPD(0, CS, RST, DC, BUSY, CLK, DIN);
 
@@ -97,11 +98,12 @@ void checkServiceStatus() {
   if (http.begin(*client, status_api_url)) {
     int httpCode = http.GET();
     if (httpCode == HTTP_CODE_OK) {
-      StaticJsonDocument<200> filter;
+      StaticJsonDocument<400> filter;
       filter["direction_statuses"]["north"] = true;
       filter["service_irregularity_summaries"]["north"] = true;
+      filter["actual_routings"]["north"][0][0] = true;  // Capture stop IDs to detect local vs express
       
-      DynamicJsonDocument doc(1536); 
+      DynamicJsonDocument doc(3072);
       // If the input is truncated, we might still have the data we need in the doc.
       DeserializationError error = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
       
@@ -116,9 +118,27 @@ void checkServiceStatus() {
         
         if (northStatus == "null") northStatus = "Unknown";
         if (northSummary == "null") northSummary = "";
-        
+
+        // Determine local vs express: local stops R32 (Union St), R35 (25 St), R40 (53 St)
+        bool isLocal = false;
+        if (doc.containsKey("actual_routings")) {
+          JsonArray northRoutings = doc["actual_routings"]["north"].as<JsonArray>();
+          for (JsonArray routing : northRoutings) {
+            for (JsonVariant stopId : routing) {
+              const char* sid = stopId.as<const char*>();
+              if (sid && (strcmp(sid, "R32") == 0 || strcmp(sid, "R35") == 0 || strcmp(sid, "R40") == 0)) {
+                isLocal = true;
+                break;
+              }
+            }
+            if (isLocal) break;
+          }
+        }
+        northServiceType = isLocal ? "Local" : "Express";
+
         Serial.println("Status: " + northStatus);
         Serial.println("Summary: " + northSummary);
+        Serial.println("Service type: " + northServiceType);
       } else {
         Serial.print("Status deserializeJson() failed: ");
         Serial.println(error.c_str());
@@ -207,6 +227,7 @@ void drawTrainData(DynamicJsonDocument& doc) {
   EPD.SetFont(FONT32);
   EPD.fontscale = 1;
   String statusText = "Status: " + (northStatus.length() > 0 ? northStatus : "Unknown");
+  if (northServiceType.length() > 0) statusText += " | " + northServiceType;
   EPD.DrawUTF(yPos, LEFT_MARGIN, statusText);
   yPos += 40;
 
