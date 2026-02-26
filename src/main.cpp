@@ -136,22 +136,22 @@ void drawNTrainIcon() {
   // 1. Solid black filled circle
   EPD.DrawCircle(cx, cy, r, true);
 
-  // FONT32 glyphs are 32 px tall. "N" is ~20 px wide at scale 1.
-  // Top-left of glyph placed at (cx-16, cy-10) so it's centered in the circle.
-  const int gx = cx - 16;  // glyph top row
-  const int gy = cy - 10;  // glyph left col
+  // FONT32 at fontscale=2 → 64 px tall, ~40 px wide.
+  // Center the glyph: offset by half-height (32) and half-width (20).
+  const int gx = cx - 32;  // glyph top row
+  const int gy = cy - 20;  // glyph left col
 
   // 2. Inverse the N bounding rectangle (all-black from filled circle → all-white)
-  EPD.Inverse(gx - 2, gx + 34, gy - 2, gy + 22);
+  EPD.Inverse(gx - 2, gx + 66, gy - 2, gy + 42);
 
   // 3. Draw "N" → black N on now-white rectangle
   EPD.SetFont(FONT32);
-  EPD.fontscale = 1;
+  EPD.fontscale = 2;
   EPD.DrawUTF(gx, gy, "N");
 
   // 4. Inverse the same rectangle again → white N on black rectangle,
   //    which is fully inside the circle so it merges seamlessly with the black fill.
-  EPD.Inverse(gx - 2, gx + 34, gy - 2, gy + 22);
+  EPD.Inverse(gx - 2, gx + 66, gy - 2, gy + 42);
 
   // Restore drawing state
   EPD.SetFont(FONT12);
@@ -171,8 +171,8 @@ void drawTrainData(DynamicJsonDocument& doc) {
   // Station Name
   EPD.DrawUTF(40, 10, "Fort Hamilton Pkwy");
 
-  // N-train circle icon in the blank right-center area of the display
-  drawNTrainIcon();
+  // N-train circle icon in the blank right-center area of the display (skipped rn)
+  // drawNTrainIcon();
 
   int yPos = 80;
   
