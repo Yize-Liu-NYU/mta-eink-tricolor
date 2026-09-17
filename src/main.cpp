@@ -98,9 +98,12 @@ void checkServiceStatus() {
   if (http.begin(*client, status_api_url)) {
     int httpCode = http.GET();
     if (httpCode == HTTP_CODE_OK) {
-      StaticJsonDocument<400> filter;
+      StaticJsonDocument<600> filter;
       filter["direction_statuses"]["north"] = true;
       filter["service_irregularity_summaries"]["north"] = true;
+      filter["service_change_summaries"]["north"][0] = true;  // Array of planned service change summaries
+      filter["service_change_summaries"]["north"][1] = true;
+      filter["service_change_summaries"]["north"][2] = true;
       filter["actual_routings"]["north"][0][0] = true;  // Capture stop IDs to detect local vs express
       
       DynamicJsonDocument doc(3072);
@@ -115,9 +118,21 @@ void checkServiceStatus() {
         if (doc.containsKey("service_irregularity_summaries")) {
             northSummary = doc["service_irregularity_summaries"]["north"].as<String>();
         }
+        if (northSummary == "null") northSummary = "";
+
+        // Append any planned service change summaries (array field)
+        if (doc.containsKey("service_change_summaries")) {
+            JsonArray changeSummaries = doc["service_change_summaries"]["north"].as<JsonArray>();
+            for (JsonVariant change : changeSummaries) {
+                String s = change.as<String>();
+                if (s.length() > 0 && s != "null") {
+                    if (northSummary.length() > 0) northSummary += " | ";
+                    northSummary += s;
+                }
+            }
+        }
         
         if (northStatus == "null") northStatus = "Unknown";
-        if (northSummary == "null") northSummary = "";
 
         // Determine local vs express: local stops R32 (Union St), R35 (25 St), R40 (53 St)
         bool isLocal = false;
@@ -207,18 +222,11 @@ void drawTrainData(DynamicJsonDocument& doc) {
     // FONT12 at scale=1: ~6px/char, 390px usable width → ~65 chars/line
     const int charsPerLine = 65;
     int len = northSummary.length();
-    // Line 1
-    EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(0, min(len, charsPerLine)));
-    yPos += 16;
-    if (len > charsPerLine) {
-      // Line 2
-      EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(charsPerLine, min(len, charsPerLine * 2)));
+    for (int line = 0; line < 6; line++) {
+      int start = charsPerLine * line;
+      if (start >= len) break;
+      EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(start, min(len, start + charsPerLine)));
       yPos += 16;
-      if (len > charsPerLine * 2) {
-        // Line 3
-        EPD.DrawUTF(yPos, LEFT_MARGIN, northSummary.substring(charsPerLine * 2, min(len, charsPerLine * 3)));
-        yPos += 16;
-      }
     }
     yPos += 8; // Extra gap after alert block before status
   }
